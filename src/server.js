@@ -1,7 +1,7 @@
 import http from "node:http";
-import { randomUUID } from "node:crypto";
-import { Database } from "./database.js";
 import { json } from "./middlewares/json.js";
+import { routes } from "./routes.js";
+import { extratQueryParams } from "./utils/extract-query-params.js";
 
 // Principais métodos HTTP - GET / POST / PUT / PATCH / DELETE
 
@@ -11,31 +11,35 @@ import { json } from "./middlewares/json.js";
 // PATCH => Atualizar uma informação específica de um recurso no back-end
 // DELETE => Deletar um recurso no back-end
 
-const database = new Database();
+// 1- Query Parameters: URL Stateful -> Filtros, paginação... não-obrigatórios
+// 2- Route Parameters: Identificação de recurso
+// 3- Request Body: Envio de informações de um formulário (HTTPs)
+
+// 1- http://localhost:3333/users?userId=1&name=Thiago
+// 2- GET http://localhost:3333/users/1 (GET by Id por exemplo)
+// 2- DELETE http://localhost:3333/users/1
+// 3- POST http://localhost:3333/users
 
 const server = http.createServer(async (req, res) => {
   const { method, url } = req;
 
   await json(req, res);
 
-  if (method === "GET" && url === "/users") {
-    const users = database.select("users");
+  const route = routes.find((route) => {
+    return route.method === method && route.path.test(url);
+  });
 
-    return res.end(JSON.stringify(users));
-  }
+  if (route) {
+    const routeParams = req.url.match(route.path);
 
-  if (method === "POST" && url === "/users") {
-    const { name, email } = req.body;
+    // console.log(extratQueryParams(routeParams.groups.query));
 
-    const user = {
-      id: randomUUID(),
-      name,
-      email,
-    };
+    const { query, ...params } = routeParams.groups;
 
-    database.insert("users", user);
+    req.params = params;
+    req.query = query ? extratQueryParams(query) : {};
 
-    return res.writeHead(201).end();
+    return route.handler(req, res);
   }
 
   return res.writeHead(404).end();
